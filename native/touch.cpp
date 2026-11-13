@@ -1430,6 +1430,12 @@ bool OnEvent(const SDL_Event& e) {
             float x = e.tfinger.x * Width(), y = e.tfinger.y * Height();
             std::lock_guard lock(g_lock);
             EnsureLayout();
+            // Temporary multitouch diagnostics: record lifecycle events and the active finger count.
+            if (e.type == SDL_EVENT_FINGER_DOWN || e.type == SDL_EVENT_FINGER_UP ||
+                e.type == SDL_EVENT_FINGER_CANCELED) {
+                LOGI("touch diagnostic: event=%u finger=%lld active_before=%zu",
+                     unsigned(e.type), static_cast<long long>(e.tfinger.fingerID), g_fingers.size());
+            }
             if (e.type == SDL_EVENT_FINGER_DOWN) {
                 // the settings panel takes the touches, but for the button that closes it
                 if (app::MenuOpen() && !g_editing) {
@@ -1441,13 +1447,25 @@ bool OnEvent(const SDL_Event& e) {
                 if (game::CinematicMenuHit(x, y) || game::ReplayMenuHit(x, y)) return false;
                 if (game::ReplayActive() && !g_editing) return false;
                 FingerDown(e.tfinger.fingerID, x, y);
+                LOGI("touch diagnostic: down_registered finger=%lld active_after=%zu",
+                     static_cast<long long>(e.tfinger.fingerID), g_fingers.size());
                 return true;
             }
             bool ours = std::any_of(g_fingers.begin(), g_fingers.end(),
                                     [&](const Finger& f) { return f.id == e.tfinger.fingerID; });
-            if (!ours) return false;
+            if (!ours) {
+                if (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) {
+                    LOGI("touch diagnostic: release_unmatched finger=%lld active=%zu",
+                         static_cast<long long>(e.tfinger.fingerID), g_fingers.size());
+                }
+                return false;
+            }
             if (e.type == SDL_EVENT_FINGER_MOTION) FingerMove(e.tfinger.fingerID, x, y);
             else FingerUp(e.tfinger.fingerID);
+            if (e.type == SDL_EVENT_FINGER_UP || e.type == SDL_EVENT_FINGER_CANCELED) {
+                LOGI("touch diagnostic: release_processed finger=%lld active_after=%zu",
+                     static_cast<long long>(e.tfinger.fingerID), g_fingers.size());
+            }
             return true;
         }
         default:
