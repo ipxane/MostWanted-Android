@@ -489,6 +489,7 @@ struct Finger {
     float x0 = 0, y0 = 0;  // where it went down, pixels; in the editor, its offset from the control's centre
     float x = 0, y = 0;    // where it is
     uint64_t down_ms = 0;
+    bool nitro_swipe = false; // sliding the accelerator finger upward also holds B (nitrous)
     float angle = 0;    // Wheel: the finger's angle round the wheel's centre at its last move, degrees
 };
 
@@ -985,6 +986,7 @@ void Recount() {
     bool stick = false, rstick = false;
     for (const Finger& f : g_fingers) {
         if (f.role == Role::Button && ButtonShown(f.button)) g_pressed[f.button] = true;
+        if (f.nitro_swipe) g_pressed[1] = true; // B: nitrous
         if (f.role == Role::Stick) stick = true;
         if (f.role == Role::Look) rstick = true;
     }
@@ -1297,6 +1299,10 @@ void FingerMove(SDL_FingerID id, float x, float y) {
         if (f.id != id) continue;
         f.x = x;
         f.y = y;
+        // In racing controls RT is the accelerator. Slide that same finger upward to activate nitrous
+        // without needing another finger; keep RT held until the finger is lifted.
+        if (f.role == Role::Button && kButtons[f.button].press == kAnalogRT &&
+            f.y0 - y >= Height() * 0.07f) f.nitro_swipe = true;
         if (f.role == Role::HudDrag) DragHud(f.button, f.x - f.x0, f.y - f.y0);
         if (f.role == Role::Drag) {
             if (int g = MenuGroup(f.button); g >= 0) {
@@ -1497,6 +1503,12 @@ void Apply(int port, input::Pad& pad) {
     } else if (g_panel_after_pause && !g_fe_queue.left) {
         g_panel_after_pause = false;
         if (!app::MenuOpen()) app::ToggleMenu();
+    }
+    // Nitrous requires acceleration in Most Wanted. Make pressing B also hold RT automatically,
+    // so nitrous works with one finger even when the accelerator is not being held separately.
+    if (g_pressed[1]) {
+        used = true;
+        pad.analog[kAnalogRT] = 0xFF;
     }
     if (NowMs() < g_back_until) {
         used = true;
